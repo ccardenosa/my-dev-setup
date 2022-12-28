@@ -1,3 +1,10 @@
+- name: Cleaning up Env
+  when: "'clean-up' in ansible_run_tags"
+  tags:
+    - clean-up
+  shell: |
+    {{ repo.cleanup_script }}
+
 - name: Copy Hacked scripts
   tags:
     - fetch-code

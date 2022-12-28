@@ -39,6 +39,7 @@
 
     - name: Applying Repo Hacks
       tags:
+        - clean-up
         - fetch-code
         - run-tests
       include_tasks: hacks.yaml

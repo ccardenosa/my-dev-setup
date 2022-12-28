@@ -10,3 +10,7 @@ repos:
   - generate_yamls.sh
   - setup_cluster.sh
   - test-simple-macvlan1.sh
+  cleanup_script: |
+    kind delete cluster
+    podman stop kind-registry
+    podman rm kind-registry
