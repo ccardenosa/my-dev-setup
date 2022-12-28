@@ -1,0 +1,12 @@
+repos:
+- name: multus-cni
+  url: https://github.com/ccardenosa/multus-cni.git
+  branch: multus-cilium
+  local_path: /opt/repos/multus-cni
+  templates:
+  - e2e/setup_cluster.sh
+  - e2e/setup_cluster_extra.sh
+  tests:
+  - generate_yamls.sh
+  - setup_cluster.sh
+  - test-simple-macvlan1.sh

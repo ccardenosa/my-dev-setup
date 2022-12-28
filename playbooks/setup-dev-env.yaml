@@ -1,0 +1,220 @@
+---
+- name: Boostrap bastion host -> Configure System Journal persistently
+  hosts: dev-system
+
+  tasks:
+
+    # This is to preserve the systemd journal logs across reboots
+    # on the bastion host. For RHEL systems, this is simply done
+    # by creating the /var/log/journal directory.
+    # Article: https://access.redhat.com/solutions/696893
+    - name: Ensure /var/log/journal folder exists
+      file:
+        path: /var/log/journal
+        state: directory
+
+
+- name: Boostrap bastion host -> Install SysEng tools
+  hosts: dev-system
+
+  tasks:
+
+    - name: Install container-tools module packages
+      dnf:
+        name: '@container-tools'
+        state: present
+
+    # Install some tools to perform system engineering tasks
+    # on the bastion host.
+    - name: Install dev and net tools
+      tags:
+        - install-via-dnf
+      dnf:
+        name:
+          - vim-enhanced
+          - bash-completion
+          - make
+          - golang
+          - ansible-core
+          - podman-docker
+          - curl
+          - nmap-ncat
+        state: present
+
+    - name: Install pip3 packages
+      tags:
+        - install-via-pip3
+      pip:
+        executable: pip3
+        name:
+          - j2cli
+
+    # Tasty is a CLI to manage (e.g. list, info, install, remove, search) OpenShift operators
+    # in a DNF package fashion.
+    # Repository: https://github.com/karmab/tasty
+    - name: Install tasty tool
+      get_url:
+        url: https://github.com/karmab/tasty/releases/download/v0.8.2/tasty-linux-amd64
+        dest: /usr/bin/tasty
+        mode: '0755'
+
+    - name: Install Ansible extra collections
+      shell: |
+        ansible-galaxy collection install community.general
+        ansible-galaxy collection install community.mysql
+        ansible-galaxy collection install ansible.posix
+        ansible-galaxy collection install containers.podman
+        ansible-galaxy collection install kubernetes.core
+
+    - name: Install Kind stuff
+      tags:
+        - install-kind
+      shell: |
+        curl -Lo /usr/local/bin/{{ program.bin_name }} {{ program.url }}
+        chmod +x /usr/local/bin/{{ program.bin_name }}
+      loop:
+        - { "bin_name": "kind", "url": "https://github.com/kubernetes-sigs/kind/releases/download/v0.12.0/kind-$(uname)-amd64" }
+        - { "bin_name": "kubectl", "url": "https://storage.googleapis.com/kubernetes-release/release/`curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt`/bin/linux/amd64/kubectl" }
+        - { "bin_name": "koko", "url": "https://github.com/redhat-nfvpe/koko/releases/download/v0.83/koko_0.83_linux_amd64" }
+      loop_control:
+        loop_var: program
+
+- name: Boostrap bastion host -> Install developer tools
+  hosts: dev-system
+
+  vars:
+    grpcurl_version: 1.8.6
+    pull_secret_validator_version: 1.0.6
+
+  tasks:
+    - name: Install git, jq, and tmux tools
+      dnf:
+        name:
+          - git
+          - jq
+          - tmux
+        state: present
+
+    - name: Set up vimrc
+      tags:
+        - update-rc-files
+      copy:
+        dest: "~/.vimrc"
+        content: |
+          set expandtab
+          set tabstop=2
+          set sw=2
+          set hlsearch
+          set background=dark
+          syntax on
+          map <leader>tn :tabnew<cr>
+          map <leader>to :tabonly<cr>
+          map <leader>tc :tabclose<cr>
+          map <leader>tm :tabmove
+          map tg :tabprev<CR>
+          map th :tabfirst<CR>
+          map tl :tablast<CR>
+          map tt :tabedit<Space>
+
+    - name: Set up tmux
+      copy:
+        dest: "~/.tmux.conf"
+        content: |
+          # Mouse mode
+          set -g mouse on
+
+          # Status bar
+          set -g status on
+          set -g status-interval 1
+          set -g status-justify centre
+          set -g status-style fg=white,bg=black
+
+          # Highlight the current window.
+          setw -g window-status-current-fg white
+          setw -g window-status-current-bg red
+          setw -g window-status-current-attr bright
+
+          # Status Bar Left side
+          set -g status-left-length 50
+          set -g status-left-style default
+
+          # Status Bar Right side
+          set -g status-right-length 40
+          set -g status-right-style default
+
+    - name: Set up git
+      copy:
+        dest: "~/.gitconfig"
+        content: |
+          [user]
+            name = rh-developer
+            email = rh-developer@redhat.com
+          [alias]
+            st = status
+            stu = status -uno
+            co = checkout
+            ci = commit
+            br = branch
+            logone = log --decorate=short --pretty=oneline
+            lg = log --graph
+          [pager]
+            branch = false
+          [merge]
+            tool = vimdiff
+            conflictstyle = diff3
+          [mergetool]
+            prompt = false
+          [core]
+            ignorecase = false
+            pager = less -X
+            editor = vim
+
+    - name: Install k9s, ketall, grpcurl, and pullsecret-validator-cli tools
+      unarchive:
+        src: "{{ item }}"
+        dest: /usr/bin
+        remote_src: yes
+      with_items:
+        - https://github.com/derailed/k9s/releases/latest/download/k9s_Linux_x86_64.tar.gz
+        - https://github.com/corneliusweig/ketall/releases/latest/download/get-all-amd64-linux.tar.gz
+        - https://github.com/fullstorydev/grpcurl/releases/download/v{{ grpcurl_version }}/grpcurl_{{ grpcurl_version }}_linux_x86_64.tar.gz
+        - https://github.com/RHsyseng/pullsecret-validator-cli/releases/download/v{{ pull_secret_validator_version }}/pullsecret-validator-cli-v{{ pull_secret_validator_version }}-linux-amd64.tar.gz
+      changed_when: no
+
+    - name: Check that oh-my-bash is already installed
+      stat:
+        path: ~/.oh-my-bash
+      register: omb
+
+    - name: Install oh-my-bash
+      shell: nohup bash -c "$(curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh)" &
+      when: not omb.stat.exists
+
+    - name: Set oh-my-bash theme
+      replace:
+        path: ~/.bashrc
+        regexp: 'OSH_THEME=.*'
+        replace: 'OSH_THEME="zork"'
+        backup: yes
+      when: not omb.stat.exists
+
+    - name: Configure aliases for Podman
+      tags:
+        - update-rc-files
+      lineinfile:
+        path: ~/.bashrc
+        line: "{{ item }}"
+        state: present
+      with_items:
+        - "# podman aliases"
+        - "alias pd='podman'"
+        - "alias pds='podman ps'"
+        - "alias pdi='podman images'"
+        - "# Systemctl default editor"
+        - "export SYSTEMD_EDITOR=vim"
+        - "# kubectl aliases"
+        - "source <(kubectl completion bash)"
+        - "alias k='kubectl'"
+        - "complete -F __start_kubectl k"
+        - "# kind aliases"
+        - "source <(kind completion bash)"

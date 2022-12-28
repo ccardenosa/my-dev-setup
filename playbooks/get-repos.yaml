@@ -1,0 +1,47 @@
+- name: Get repos
+  hosts: dev-system
+
+  tasks:
+
+    - name: Include env test vars
+      tags:
+        - clean-up
+        - fetch-code
+        - run-tests
+      include_vars: "{{ item }}"
+      loop:
+        - ./vars/repos.yaml
+
+    - name: Deleting Repos
+      when: "'clean-up' in ansible_run_tags"
+      tags:
+        - clean-up
+      file:
+        path: "{{ repo.local_path }}"
+        state: absent
+      loop: "{{ repos }}"
+      loop_control:
+        loop_var: repo
+
+    - name: Get code from repo
+      #when: "'fetch-code' in ansible_run_tags"
+      tags:
+        - fetch-code
+      git:
+        repo: "{{ repo.url }}"
+        dest: "{{ repo.local_path }}"
+        update: yes
+        single_branch: yes
+        version: "{{ repo.branch }}"
+      loop: "{{ repos }}"
+      loop_control:
+        loop_var: repo
+
+    - name: Applying Repo Hacks
+      tags:
+        - fetch-code
+        - run-tests
+      include_tasks: hacks.yaml
+      loop: "{{ repos }}"
+      loop_control:
+        loop_var: repo

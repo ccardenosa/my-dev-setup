@@ -1,0 +1,21 @@
+- name: Copy Hacked scripts
+  tags:
+    - fetch-code
+  copy:
+    src: templates/multus/{{ tmpl }}
+    dest: "{{ repo.local_path }}/{{ tmpl }}"
+    mode: '755'
+  loop: "{{ repo.templates }}"
+  loop_control:
+    loop_var: tmpl
+
+- name: Run E2E Test
+  tags:
+    - run-tests
+  shell: |
+    pushd {{ repo.local_path }}/e2e
+    ./{{ ts }}
+    popd
+  loop: "{{ repo.tests }}"
+  loop_control:
+    loop_var: ts
